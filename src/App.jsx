@@ -1417,12 +1417,10 @@ export default function App() {
       // The `unique_active_booking_slot` partial unique index on
       // (barber_id, booking_date, time_slot) WHERE status IN ('confirmed','pending')
       // is the real source of truth — it prevents two customers from
-      
-      ("Booking data:", formData);
+      // booking the same slot even if they submit at the exact same moment.
       const { data, error } = await supabase
         .from('bookings')
         .insert({
-          customer_name: formData.name,
           name: formData.name,
           phone: formData.phone,
           email: formData.email,
@@ -1454,7 +1452,7 @@ export default function App() {
 
       setStep(5);
     } catch (error) {
-      console.error("Booking error:", error.message);
+      console.error("Booking error:", error);
       setFormErrors({ time: 'Something went wrong. Please try again.' });
     } finally {
       setIsSubmitting(false);
@@ -1473,7 +1471,7 @@ export default function App() {
       setLocalBookings(prev => prev.map(updater));
       setBookingsList(prev => prev.map(updater));
     } catch (err) {
-     
+      console.error("Cancel action error:", err);
     }
   };
 
@@ -1724,7 +1722,15 @@ export default function App() {
           <>
             {/* Hero Section */}
             <section id="home" className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
-              <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1585747860715-2ba37e788b70?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80')] bg-cover bg-center bg-no-repeat opacity-30" />
+              <video
+                className="absolute inset-0 w-full h-full object-cover opacity-30"
+                src="/hero.mp4"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-transparent" />
               
               <div className="relative z-10 max-w-4xl mx-auto px-4 text-center mt-8">
@@ -1977,7 +1983,7 @@ export default function App() {
                         <div>
                           <div className="text-xs text-zinc-500 mb-1 flex items-center gap-2">
                             <span>{t('lbl_appointment_ref')}</span>
-                            <span className="font-mono bg-zinc-950 px-2 py-0.5 rounded text-amber-500/80">{String(b.id).substring(0,1)}</span>
+                            <span className="font-mono bg-zinc-950 px-2 py-0.5 rounded text-amber-500/80">{b.id.substring(0,8)}</span>
                           </div>
                           <h4 className="font-bold text-white text-lg">{td(b.serviceName)}</h4>
                           <p className="text-sm text-zinc-400 mt-1">{t('lbl_grooming_specialist')} <strong className="text-zinc-300">{b.barberName}</strong></p>
@@ -2974,16 +2980,12 @@ export default function App() {
                     <div className="mb-4">
                       <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">{t('lbl_reservation_date')}</label>
                       <input 
-  type="date" 
-  className="w-full p-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white outline-none focus:border-amber-500 transition-colors"
-  value={formData.date}
-  onChange={(e) => setFormData({...formData, date: e.target.value})}
-  min={new Date().toISOString().split('T')[0]}
-  onKeyDown={(e) => e.preventDefault()}
-  onPaste={(e) => e.preventDefault()}
-  onDrop={(e) => e.preventDefault()}
-/> 
-                       
+                        type="date" 
+                        className="w-full p-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white outline-none focus:border-amber-500 transition-colors"
+                        value={formData.date}
+                        onChange={(e) => setFormData({...formData, date: e.target.value})}
+                        min={new Date().toISOString().split('T')[0]}
+                      />
                     </div>
 
                     <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">{t('lbl_available_slots')}</label>
