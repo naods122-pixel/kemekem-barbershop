@@ -872,16 +872,26 @@ export default function App() {
   const [passwordSuccess, setPasswordSuccess] = useState('');
 
   // ─── SUPABASE AUTH: restore session + listen for changes ─────────────────
+  // Customers never see a login/signup screen. Instead we keep them on a
+  // real, invisible Supabase anonymous session (ensureAnonymousSession
+  // below) so every booking can carry a stable customer_id. Admin
+  // email/password login (handleOwnerLogin) is untouched — it simply
+  // replaces whatever session, anonymous or none, was previously active.
   useEffect(() => {
     let mounted = true;
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
-      setUser(session?.user || { uid: 'anonymous' });
-      if (session?.user) checkIsAdmin(session.user.id);
-      setDbStatus('connected');
+      if (session?.user) {
+        // Reuse the existing session as-is (anonymous or authenticated)
+        setUser(session.user);
+        checkIsAdmin(session.user.id);
+        setDbStatus('connected');
+      } else {
+        ensureAnonymousSession();
+      }
     }).catch(() => {
-      if (mounted) { setUser({ uid: 'anonymous' }); setDbStatus('offline'); }
+      if (mounted) { setUser(null); setDbStatus('offline'); }
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -890,7 +900,7 @@ export default function App() {
         setUser(session.user);
         checkIsAdmin(session.user.id);
       } else {
-        setUser({ uid: 'anonymous' });
+        ensureAnonymousSession();
         setIsOwnerVerified(false);
       }
     });
@@ -913,6 +923,24 @@ export default function App() {
       }
     } catch {
       setIsOwnerVerified(false);
+    }
+  };
+
+  /**
+   * Invisibly signs the customer in via Supabase anonymous auth so every
+   * booking has a real, stable user.id to use as customer_id — no
+   * login/signup UI is ever shown. Only called when getSession() found no
+   * existing session to reuse.
+   */
+  const ensureAnonymousSession = async () => {
+    try {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (error) throw error;
+      setUser(data?.user || null);
+      setDbStatus('connected');
+    } catch {
+      setUser(null);
+      setDbStatus('offline');
     }
   };
 
@@ -1306,16 +1334,32 @@ export default function App() {
   // Load availability data from database (real-time sync)
   useEffect(() => {
     if (!formData.barberId || !formData.date || !isBookingModalOpen) return;
-    
+
     setIsLoadingAvailability(true);
-    const timeoutId = setTimeout(() => {
-      // Get booked times for selected barber and date
-      const booked = bookingsList
-        .filter(b => b.barberId === formData.barberId && b.date === formData.date && b.status === 'confirmed'  &&
-      b.id !== formData.id   
-        )
-        .map(b => b.time);
-      
+    let cancelled = false;
+    const timeoutId = setTimeout(async () => {
+      // Get booked times for selected barber and date directly from
+      // booking_availability (source of truth), excluding the booking
+      // currently being rescheduled (if any) — same exclusion the old
+      // bookingsList-derived version applied.
+      const { data, error } = await supabase
+        .from('booking_availability')
+        .select('id, time_slot')
+        .eq('barber_id', formData.barberId)
+        .eq('booking_date', formData.date);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error('Error loading availability:', error);
+        setIsLoadingAvailability(false);
+        return;
+      }
+
+      const booked = (data || [])
+        .filter(row => row.id !== formData.id)
+        .map(row => row.time_slot);
+
       // Build booked slots map (functional update — avoids a stale
       // closure over `bookedSlots` if another update lands concurrently)
       const key = `${formData.barberId}-${formData.date}`;
@@ -1324,7 +1368,7 @@ export default function App() {
       // Get available slots — start from the shop's working-hour slots for
       // this date (not the raw master list) so booked/blocked filtering
       // never surfaces a time outside opening hours as "available".
-       const blockedTimesForSlot = getBlockedTimesForBarber(formData.barberId, formData.date);
+      const blockedTimesForSlot = getBlockedTimesForBarber(formData.barberId, formData.date);
       const available = workingHourSlots.filter(
         slot => !booked.includes(slot) && !blockedTimesForSlot.includes(slot)
       );
@@ -1332,8 +1376,8 @@ export default function App() {
       setIsLoadingAvailability(false);
     }, 300); // Small delay for visual feedback
 
-    return () => clearTimeout(timeoutId);
-  }, [formData.barberId, formData.date, bookingsList, isBookingModalOpen, workingHourSlots]);
+    return () => { cancelled = true; clearTimeout(timeoutId); };
+  }, [formData.barberId, formData.date, isBookingModalOpen, workingHourSlots]);
    useEffect(() => {
   AOS.init({
     duration: 800,
@@ -2310,6 +2354,7 @@ if (formData.id) {
       time_slot: formData.time,
       status: 'confirmed',
       user_id: user?.id || null,
+      customer_id: user?.id || null,
     })
     .select()
     .single());
