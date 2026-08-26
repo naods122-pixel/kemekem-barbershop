@@ -380,7 +380,21 @@ function AdminDashboardView({
                       style={{ maxHeight: '420px' }}
                     >
                       {Object.entries(blockedSlots).map(([key, times]) => {
-                        const [barberId, date] = key.split('-');
+                        // Key is built as `${barberId}-${date}` (see App.jsx, where
+                        // blockedSlots is loaded/updated). A plain key.split('-') breaks
+                        // on EVERY hyphen — and `date` is always "YYYY-MM-DD" (2 more
+                        // hyphens of its own), so this silently truncated `date` down to
+                        // just the year (e.g. "2026" instead of "2026-08-10") and could
+                        // also chop up a hyphenated barberId. That corrupted both the
+                        // date shown below and the barberId passed to Unblock, so the
+                        // Unblock button below could delete the wrong row (or none at
+                        // all) and a blocked slot could get stuck blocked forever. The
+                        // date is fixed-width and always at the end of the key, so
+                        // matching it explicitly and treating everything before it as
+                        // the barberId is safe no matter how many hyphens either part has.
+                        const dateMatch = key.match(/^(.*)-(\d{4}-\d{2}-\d{2})$/);
+                        const barberId = dateMatch ? dateMatch[1] : key;
+                        const date = dateMatch ? dateMatch[2] : '';
                         const barber = content.team.find(b => b.id === barberId);
                         return times.length > 0 && (
                           <div key={key} className="bg-zinc-900 border border-zinc-850 rounded-xl p-4">
