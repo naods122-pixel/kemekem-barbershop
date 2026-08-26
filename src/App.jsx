@@ -2386,7 +2386,8 @@ if (formData.id) {
   // Save customer info for future visits
   localStorage.setItem("customerEmail", formData.email);
   localStorage.setItem("customerPhone", formData.phone);
-
+  setSavedEmail(formData.email);
+  setSavedPhone(formData.phone);
 
 
       setStep(5);
